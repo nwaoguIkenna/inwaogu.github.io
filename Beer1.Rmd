@@ -1,0 +1,562 @@
+---
+title: "Beer Case Study"
+author: "Ikenna Nwaogu"
+date: "11/13/2019"
+output: html_document
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This R Markdown document is made interactive using Shiny. Unlike the more traditional workflow of creating static reports, you can now create documents that allow your readers to change the assumptions underlying your analysis and see the results immediately. 
+
+To learn more, see [Interactive Documents](http://rmarkdown.rstudio.com/authoring_shiny.html).
+
+## Inputs and Outputs
+
+You can embed Shiny inputs and outputs in your document. Outputs are automatically updated whenever inputs change.  This demonstrates how a standard R plot can be made interactive by wrapping it in the Shiny `renderPlot` function. The `selectInput` and `sliderInput` functions create the input widgets used to drive the plot.
+
+```{r eruptions, echo=FALSE}
+
+library(shiny)
+library(dplyr)
+library(plyr)
+library(ggplot2)
+
+
+```
+
+```{r echo = FALSE}
+# read in data
+beers = read.csv('./data/Beers.csv', header = TRUE) # Import Beers data
+brew = read.csv('./data/Breweries.csv',header = TRUE) # Import Breweries data
+map = read.csv('./data/us-zip-code-latitude-and-longitude.csv',header = TRUE,sep=";")  # Import Zipcode USA Coordinates
+
+beers <- beers %>% filter(!is.na(ABV))
+beers <- beers %>% filter(!is.na(IBU))
+
+fluidPage(
+  
+  # App title ----
+  titlePanel("Data Selection"),
+  
+  # Sidebar layout with input and output definitions ----
+  sidebarLayout(
+    
+    # Sidebar panel for inputs ----
+    sidebarPanel(
+      
+      # Input: Text for providing a caption ----
+      # Note: Changes made to the caption in the textInput control
+      # are updated in the output area immediately as you type
+      textInput(inputId = "caption",
+                label = "Caption:",
+                value = "Data Summary"),
+      
+      # Input: Selector for choosing dataset ----
+      selectInput(inputId = "dataset",
+                  label = "Choose a dataset:",
+                  choices = c("Beer", "Breweries")),
+      
+      # Input: Numeric entry for number of obs to view ----
+      numericInput(inputId = "obs",
+                   label = "Number of observations to view:",
+                   value = 10)
+      
+    ),
+    
+    # Main panel for displaying outputs ----
+    mainPanel(
+      
+      # Output: Formatted text for caption ----
+      h3(textOutput("caption", container = span)),
+      
+      # Output: Verbatim text for data summary ----
+      verbatimTextOutput("summary"),
+      
+      # Output: HTML table with requested number of observations ----
+      tableOutput("view")
+      
+    )
+  )
+)
+
+# Define server logic to summarize and view selected dataset ----
+
+  
+  # Return the requested dataset ----
+  # By declaring datasetInput as a reactive expression we ensure
+  # that:
+  #
+  # 1. It is only called when the inputs it depends on changes
+  # 2. The computation and result are shared by all the callers,
+  #    i.e. it only executes a single time
+  datasetInput <- reactive({
+    switch(input$dataset,
+           "Beer" = beers,
+           "Breweries" = brew)
+  })
+  
+  # Create caption ----
+  # The output$caption is computed based on a reactive expression
+  # that returns input$caption. When the user changes the
+  # "caption" field:
+  #
+  # 1. This function is automatically called to recompute the output
+  # 2. New caption is pushed back to the browser for re-display
+  #
+  # Note that because the data-oriented reactive expressions
+  # below don't depend on input$caption, those expressions are
+  # NOT called when input$caption changes
+  renderText({
+    input$caption
+  })
+  
+  # Generate a summary of the dataset ----
+  # The output$summary depends on the datasetInput reactive
+  # expression, so will be re-executed whenever datasetInput is
+  # invalidated, i.e. whenever the input$dataset changes
+  renderPrint({
+    dataset <- datasetInput()
+    summary(dataset)
+  })
+  
+  # Show the first "n" observations ----
+  # The output$view depends on both the databaseInput reactive
+  # expression and input$obs, so it will be re-executed whenever
+  # input$dataset or input$obs is changed
+  renderTable({
+    head(datasetInput(), n = input$obs)
+  })
+  
+```
+
+
+```{r tabsets, echo=FALSE}
+mergeData = inner_join(brew,beers, by = c("Brew_ID" = "Brewery_id"))
+mergeData <- dplyr::rename(mergeData, brewName = Name.x)
+mergeData <- dplyr::rename(mergeData, beerName = Name.y)
+
+
+fluidPage(
+  
+  # Application title
+  titlePanel("Histogram of IBU"),
+  
+  # Sidebar with a slider input for number of bins 
+  sidebarLayout(
+    sidebarPanel(
+      sliderInput("bins",
+                  "Number of bins:",
+                  min = 1,
+                  max = 50,
+                  value = 30)
+    ),
+    
+    # Show a plot of the generated distribution
+    mainPanel(
+      plotOutput("distPlot")
+    )
+  )
+)
+
+# Define server logic required to draw a histogram
+
+renderPlot({
+    # generate bins based on input$bins from ui.R
+    IBU_Content   <- mergeData$IBU
+    bins <- seq(min(IBU_Content), max(IBU_Content), length.out = input$bins + 1)
+    
+    # draw the histogram with the specified number of bins
+    hist(IBU_Content, breaks = bins, col = 'darkgray', border = 'white')
+  })
+
+```
+
+Note the use of the `height` parameter to determine how much vertical space the embedded application should occupy.
+
+
+
+
+```{r tabsets0, echo=FALSE}
+ui <- fluidPage(
+  
+  # Application title
+  titlePanel("Histogram of IBU"),
+  
+  # Sidebar with a slider input for number of bins 
+
+  selectInput(inputId = "dataset",
+              label = "Make a Histogram:",
+              choices = c("Select", "Histogram")),
+
+    
+    # Show a plot of the generated distribution
+    mainPanel(
+      plotOutput("distPlot")
+    )
+  )
+  
+
+
+# Define server logic required to draw a histogram
+server <- function(input, output) {
+  
+  output$distPlot <- renderPlot({
+    # generate bins based on input$bins from ui.R
+    
+    if (input$dataset != "Select") {
+      
+    
+    IBU_Content   <- mergeData$IBU
+    State <- mergeData$State
+   
+    
+    # draw the histogram with the specified number of bins
+    mergeData %>% ggplot(aes(fill=State, y=IBU_Content, x=State)) + geom_bar(stat="identity") + labs(title = 'Median IBU By State')}
+  })
+}
+
+# Run the application 
+shinyApp(ui, server)
+
+```
+
+
+```{r tabsets1, echo=FALSE}
+ui <- fluidPage(
+  
+  # Application title
+  titlePanel("Histogram of ABV By State"),
+  
+  # Sidebar with a slider input for number of bins 
+
+  selectInput(inputId = "dataset",
+              label = "Make a Histogram For ABV:",
+              choices = c("Select", "Histogram")),
+
+    
+    # Show a plot of the generated distribution
+    mainPanel(
+      plotOutput("distPlot")
+    )
+  )
+  
+
+
+# Define server logic required to draw a histogram
+server <- function(input, output) {
+  
+  output$distPlot <- renderPlot({
+    # generate bins based on input$bins from ui.R
+    
+    if (input$dataset != "Select") {
+      
+    
+    ABV_Content   <- mergeData$ABV
+    State <- mergeData$State
+   
+    
+    # draw the histogram with the specified number of bins
+    mergeData %>% ggplot(aes(fill=State, y=ABV_Content, x=State)) + geom_bar(stat="identity") + labs(title = 'ABV By State')}
+  })
+}
+
+# Run the application 
+shinyApp(ui, server)
+```
+
+
+```{r tabsets2, echo=FALSE}
+ui <- fluidPage(
+  
+  # Application title
+  titlePanel("IBU Plot Displays"),
+  
+  # Sidebar with a slider input for number of bins 
+
+  selectInput(inputId = "dataset",
+              label = "Make a Histogram or Boxplot:",
+              choices = c("Boxplot", "Histogram")),
+
+    
+    # Show a plot of the generated distribution
+    mainPanel(
+      plotOutput("distPlot")
+    )
+  )
+  
+
+
+# Define server logic required to draw a histogram
+server <- function(input, output) {
+  
+  output$distPlot <- renderPlot({
+    # generate bins based on input$bins from ui.R
+    IBU_Content   <- mergeData$IBU
+    State <- mergeData$State
+    if (input$dataset != "Boxplot") {
+
+    # draw the histogram with the specified number of bins
+    mergeData %>% ggplot(aes(fill=State, y=IBU_Content, x=State)) + geom_bar(stat="identity") + labs(title = 'IBU By State')}
+  else{mergeData %>% ggplot(aes(fill=State, y=IBU_Content, x=State)) + geom_boxplot(outlier.colour="black", outlier.shape=16,
+                    outlier.size=2, notch=FALSE) + labs(title = 'IBU By State')}  
+  })
+}
+
+# Run the application 
+shinyApp(ui, server)
+```
+
+
+
+```{r tabsets3, echo=FALSE}
+ui <- fluidPage(
+  
+  # Application title
+  titlePanel("ABV Plots"),
+  
+  # Sidebar with a slider input for number of bins 
+
+  selectInput(inputId = "dataset",
+              label = "Choose Histogram or Boxplot:",
+              choices = c("Boxplot", "Histogram")),
+
+    
+    # Show a plot of the generated distribution
+    mainPanel(
+      plotOutput("distPlot")
+    )
+  )
+  
+
+
+# Define server logic required to draw a histogram
+server <- function(input, output) {
+  
+  output$distPlot <- renderPlot({
+    # generate bins based on input$bins from ui.R
+    ABV_Content   <- mergeData$ABV
+    State <- mergeData$State
+    if (input$dataset != "Boxplot") {
+
+    # draw the histogram with the specified number of bins
+    mergeData %>% ggplot(aes(fill=State, y=ABV_Content, x=State)) + geom_bar(stat="identity") + labs(title = 'ABV By State')}
+  else{mergeData %>% ggplot(aes(fill=State, y=ABV_Content, x=State)) + geom_boxplot(outlier.colour="black", outlier.shape=16,
+                    outlier.size=2, notch=FALSE) + labs(title = 'ABV By State')}  
+  })
+}
+
+# Run the application 
+shinyApp(ui, server)
+```
+
+## ABV Filter By State and City
+
+```{r tabsets4, echo=FALSE}
+ui <- fluidPage(
+  
+  # Sidebar with a slider input for number of bins 
+
+  selectInput(inputId = "dataset",
+              label = "Choose Histogram or Boxplot:",
+              choices = c("Boxplot", "Histogram")),
+
+  selectInput("man",
+              "State:",
+              c("All",
+                unique(as.character(sort(mergeData$State))))),
+    
+  # Show a plot of the generated distribution
+    mainPanel(
+      plotOutput("distPlot")
+    )
+  )
+  
+
+
+# Define server logic required to draw a histogram
+server <- function(input, output) {
+  
+  output$distPlot <- renderPlot({
+    # generate bins based on input$bins from ui.R
+    ABV_Content   <- mergeData$ABV
+    State <- mergeData$State
+    if (input$dataset != "Boxplot" & input$man == 'All' ) {
+
+    # draw the histogram with the specified number of bins
+    mergeData %>% ggplot(aes(fill=State, y=ABV_Content, x=State)) + geom_bar(stat="identity") + labs(title = 'ABV By State')}
+  else if (input$dataset != "Histogram" & input$man == 'All' )  {mergeData %>% ggplot(aes(fill=State, y=ABV_Content, x=State)) + geom_boxplot(outlier.colour="black", outlier.shape=16,
+                    outlier.size=2, notch=FALSE) + labs(title = 'ABV By State')}  
+  else if (input$dataset != "Histogram" & input$man != 'All' ){
+    mergeData<-mergeData%>% filter(State == input$man) 
+    ABV_Content<- mergeData$ABV
+  City <- mergeData$City 
+  mergeData %>% ggplot(aes(fill=City, y=ABV_Content, x=City)) + geom_boxplot(outlier.colour="black", outlier.shape=16,
+                                                                               outlier.size=2, notch=FALSE) + labs(title = 'ABV By City per State')}
+    else if (input$dataset != "Boxplot" & input$man != 'All' ){
+      mergeData<-mergeData%>% filter(State == input$man) 
+     ABV_Content<- mergeData$ABV
+      City <- mergeData$City 
+      mergeData %>% ggplot(aes(fill=City, y=ABV_Content, x=City)) + geom_bar(stat="identity") + labs(title = 'ABV By City per State')}
+    })}
+
+# Run the application 
+shinyApp(ui, server)
+
+```
+
+## IBU Filter By State and City
+
+```{r tabsets5, echo=FALSE}
+ui <- fluidPage(
+  
+  # Sidebar with a slider input for number of bins 
+
+  selectInput(inputId = "dataset",
+              label = "Choose Histogram or Boxplot:",
+              choices = c("Boxplot", "Histogram")),
+
+  selectInput("man",
+              "State:",
+              c("All",
+                unique(as.character(sort(mergeData$State))))),
+    
+  # Show a plot of the generated distribution
+    mainPanel(
+      plotOutput("distPlot")
+    )
+  )
+  
+
+
+# Define server logic required to draw a histogram
+server <- function(input, output) {
+  
+  output$distPlot <- renderPlot({
+    # generate bins based on input$bins from ui.R
+    IBU_Content   <- mergeData$IBU
+    State <- mergeData$State
+    if (input$dataset != "Boxplot" & input$man == 'All' ) {
+
+    # draw the histogram with the specified number of bins
+    mergeData %>% ggplot(aes(fill=State, y=IBU_Content, x=State)) + geom_bar(stat="identity") + labs(title = 'IBU By State')}
+  else if (input$dataset != "Histogram" & input$man == 'All' )  {mergeData %>% ggplot(aes(fill=State, y=IBU_Content, x=State)) + geom_boxplot(outlier.colour="black", outlier.shape=16,
+                    outlier.size=2, notch=FALSE) + labs(title = 'IBU By State')}  
+  else if (input$dataset != "Histogram" & input$man != 'All' ){
+    mergeData<-mergeData%>% filter(State == input$man) 
+    IBU_Content<- mergeData$IBU
+  City <- mergeData$City 
+  mergeData %>% ggplot(aes(fill=City, y=IBU_Content, x=City)) + geom_boxplot(outlier.colour="black", outlier.shape=16,
+                                                                               outlier.size=2, notch=FALSE) + labs(title = 'IBU By City per State')}
+    else if (input$dataset != "Boxplot" & input$man != 'All' ){
+      mergeData<-mergeData%>% filter(State == input$man) 
+      IBU_Content<- mergeData$IBU
+      City <- mergeData$City 
+      mergeData %>% ggplot(aes(fill=City, y=IBU_Content, x=City)) + geom_bar(stat="identity") + labs(title = 'IBU By City per State')}
+  })}
+
+# Run the application 
+shinyApp(ui, server)
+
+```
+
+## ABV vs IBU with regression model line
+
+```{r tabsets6, echo=FALSE}
+mod.lm <- lm(mergeData$IBU~mergeData$ABV, data = mergeData)
+summary(mod.lm)
+mod.lm$coefficients[1]
+ui <- fluidPage(
+  
+  radioButtons("dataset", label = "Scatter with or without a fitted model",
+               choices = c("No Model" = 1, "Model" = 2), 
+               selected = 1),
+    
+    # Show a plot of the generated distribution
+    mainPanel(
+      plotOutput("distPlot")
+    )
+  )
+  
+
+# Define server logic required to draw a histogram
+server <- function(input, output) {
+  IBU_Content   <- mergeData$IBU
+  ABV_Content <- mergeData$ABV
+
+  output$distPlot <- renderPlot({
+    # generate bins based on input$bins from ui.R
+    
+    if (input$dataset == 1){mergeData %>% ggplot(aes( y=IBU_Content, x=ABV_Content)) + geom_point() + labs(title = 'ABV vs IBU') }
+   
+    else{
+    # draw the histogram with the specified number of bins
+    mergeData %>% ggplot(aes( y=IBU_Content, x=ABV_Content)) + geom_point() + labs(title = 'ABV vs IBU') +
+      geom_abline(slope=mod.lm$coefficients[2], intercept = mod.lm$coefficients[1], col='blue')}
+
+  })
+}
+
+# Run the application 
+shinyApp(ui, server)
+
+```
+
+## ABV vs IBU with regression model line Per State
+
+```{r tabsets7, echo=FALSE}
+mod.lm <- lm(mergeData$IBU~mergeData$ABV, data = mergeData)
+summary(mod.lm)
+mod.lm$coefficients[1]
+ui <- fluidPage(
+  
+  # Application title
+  
+  # Sidebar with a slider input for number of bins 
+  
+  selectInput("man",
+              "State:",
+              c("All",
+                unique(as.character(sort(mergeData$State))))),
+  
+  radioButtons("dataset", label = "Scatter with or without a fitted model",
+               choices = c("No Model" = 1, "Model" = 2), 
+               selected = 1),
+  # Show a plot of the generated distribution
+  mainPanel(
+    plotOutput("distPlot")
+  )
+)
+
+
+
+# Define server logic required to draw a histogram
+server <- function(input, output) {
+  
+  output$distPlot <- renderPlot({
+    # generate bins based on input$bins from ui.R
+    IBU_Content   <- mergeData$IBU
+    ABV_Content <- mergeData$ABV
+    State <- mergeData$State
+    if (input$man == 'All' & input$dataset == 1) {mergeData %>% ggplot(aes( y=IBU_Content, x=ABV_Content)) + geom_point() + labs(title = 'ABV vs IBU w/o Regression Line') }
+      
+      
+  else if (input$man != 'All' & input$dataset == 1)   {mergeData<-mergeData%>% filter(State == input$man) 
+  mergeData %>% ggplot(aes( y=IBU, x=ABV)) + geom_point() + labs(title = paste('ABV vs IBU for',as.character(input$man),'w/o Regression Line')) + xlab('ABV_Content') + ylab('IBU_Content')}
+        
+    else if (input$man != 'All' & input$dataset == 2)   {mergeData<-mergeData%>% filter(State == input$man)
+    mod.lm <- lm(mergeData$IBU~mergeData$ABV, data = mergeData)
+    mergeData %>% ggplot(aes( y=IBU, x=ABV)) + geom_point() + labs(title = paste('ABV vs IBU for',as.character(input$man),'with Regression Line')) +
+      geom_abline(slope=mod.lm$coefficients[2], intercept = mod.lm$coefficients[1], col='blue') + xlab('ABV_Content') + ylab('IBU_Content')}        
+        
+    else if (input$man == 'All' & input$dataset == 2)   {
+    mergeData %>% ggplot(aes( y=IBU, x=ABV)) + geom_point() + labs(title = paste('ABV vs IBU With Regression Line')) +
+      geom_abline(slope=mod.lm$coefficients[2], intercept = mod.lm$coefficients[1], col='blue') + xlab('ABV_Content') + ylab('IBU_Content')}})}
+    
+    
+
+# Run the application 
+shinyApp(ui, server)
